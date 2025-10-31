@@ -1,147 +1,293 @@
+// Galaxy Jump Race by Jayden Ford
+// Full Screen + Twinkling & Drifting Stars + Lava + Timer + Best Score
 
-let girlX = 0;
-let step = 0;
-let jumpOffset = 0;
-let isJumping = false;
-let jumpProgress = 0;
-let girlY = 280;
-
-let skyColors = [
-  [255, 0, 0],     // Red
-  [255, 255, 255], // White
-  [0, 0, 255]      // Blue
-];
-let currentSky = 0;
-
-let sunAngle = 0;
-let sunDirection = 1;
-
-let obstacles = [];
+let players = [];
+let blocks = [];
+let boosts = [];
+let stars = [];
+let gameState = "playing";
+let winner = "";
+let lavaY;
+let startTime;
+let bestTime = null;
+let colorPhase = 0;
 
 function setup() {
-  createCanvas(800, 400);
-  frameRate(30);
+  createCanvas(windowWidth, windowHeight);
+  colorMode(HSB, 360, 100, 100);
+  resetGame();
+}
 
-  // Create some random obstacles (brown blocks)
-  for (let i = 0; i < 5; i++) {
-    let x = random(200, width * 2); // Spread over wide range
-    obstacles.push({ x: x, y: 330, w: 40, h: 20 });
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  resetGame();
+}
+
+function resetGame() {
+  // Stars (with movement + brightness)
+  stars = [];
+  for (let i = 0; i < 250; i++) {
+    stars.push({
+      x: random(width),
+      y: random(height),
+      size: random(1, 3),
+      speed: random(0.1, 0.5),
+      brightness: random(70, 100),
+      flickerSpeed: random(0.02, 0.05)
+    });
   }
+
+  lavaY = height - 10;
+
+  // Players
+  players = [
+    new Player(100, height - 60, color(120, 100, 100), "Player 1"), // Green
+    new Player(100, height - 120, color(330, 60, 100), "Player 2")  // Pink
+  ];
+
+  // Blocks
+  blocks = [];
+  let xStart = 100;
+  for (let i = 0; i < 10; i++) {
+    blocks.push(new Block(xStart, height - 50, 100, 20));
+    xStart += 180;
+  }
+  blocks.push(new Block(xStart, height - 50, 250, 20, true));
+
+  // Boost pads
+  boosts = [];
+  for (let i = 0; i < 3; i++) {
+    boosts.push(new Boost(random(200, xStart - 100), height - 60));
+  }
+
+  winner = "";
+  gameState = "playing";
+  startTime = millis();
 }
 
 function draw() {
-  drawBackground();
+  drawGalaxy();
 
-  // Sun rotation
-  sunAngle += 0.01 * sunDirection;
-  if (sunAngle > 0.3 || sunAngle < -0.3) {
-    sunDirection *= -1;
-  }
+  if (gameState === "playing") {
+    drawLava();
 
-  drawSun();
+    for (let block of blocks) block.show();
+    for (let b of boosts) b.show();
 
-  // Handle jumping
-  if (isJumping) {
-    jumpProgress += 0.1;
-    jumpOffset = -sin(jumpProgress) * 50;
+    for (let p of players) {
+      p.applyGravity();
+      p.move();
+      p.checkBlockCollision(blocks);
+      p.checkBoost(boosts);
+      p.show();
 
-    if (jumpProgress >= PI) {
-      isJumping = false;
-      jumpOffset = 0;
-      jumpProgress = 0;
+      // Fell into lava
+      if (p.y > lavaY - 5 && !p.fallingInLava) {
+        p.fallingInLava = true;
+        p.lavaFallStart = millis();
+      }
+
+      if (p.fallingInLava) {
+        p.fallIntoLava();
+      }
+
+      // Win check
+      if (p.x > blocks[blocks.length - 1].x + 50) {
+        winner = p.name;
+        gameState = "won";
+        let currentTime = (millis() - startTime) / 1000;
+        if (!bestTime || currentTime < bestTime) bestTime = currentTime;
+      }
     }
-  }
 
-  // Move girl
-  girlX += 2;
-  step += 1;
-
-  // Loop back
-  if (girlX > width + 50) {
-    girlX = -50;
-  }
-
-  drawObstacles();
-  drawGirl(girlX, girlY + jumpOffset);
-}
-
-function drawBackground() {
-  // Sky
-  let c = skyColors[currentSky];
-  background(c[0], c[1], c[2]);
-
-  // Lava ground
-  noStroke();
-  for (let i = 0; i < height / 2; i++) {
-    let r = map(i, 0, height / 2, 255, 180);
-    let g = map(i, 0, height / 2, 100, 0);
-    let b = 0;
-    fill(r, g, b);
-    rect(0, height / 2 + i, width, 1);
+    drawScoreboard();
+    drawTimer();
+  } else if (gameState === "won") {
+    drawWinScreen();
   }
 }
 
-function drawSun() {
-  push();
-  translate(700, 80);
-  rotate(sunAngle);
-  fill(255, 223, 0);
-  noStroke();
-  ellipse(0, 0, 80, 80);
-  pop();
-}
-
-function drawGirl(x, y) {
-  push();
-  translate(x, y);
-
-  // Hair
-  fill(102, 51, 0);
-  ellipse(0, -45, 45, 50);
-
-  // Head
-  fill(255, 220, 185);
-  ellipse(0, -50, 30, 40);
-
-  // Body
-  fill(255, 100, 150);
-  rect(-10, -30, 20, 40, 5);
-
-  // Legs
-  let legMovement = sin(step * 0.2) * 5;
-
-  stroke(0);
-  strokeWeight(3);
-  line(-5, 10, -5 + legMovement, 30);
-  line(5, 10, 5 - legMovement, 30);
-
-  // Arms
-  let armMovement = sin(step * 0.2 + PI) * 5;
-  line(-10, -25, -20 + armMovement, -5);
-  line(10, -25, 20 - armMovement, -5);
-
-  pop();
-}
-
-function drawObstacles() {
-  fill(139, 69, 19); // brown
-  for (let obs of obstacles) {
-    let screenX = obs.x - girlX + 100;
-    if (screenX > -50 && screenX < width + 50) {
-      rect(screenX, obs.y, obs.w, obs.h);
-    }
-  }
-}
-
-// 🔁 Mouse click changes the sky color only
-function mousePressed() {
-  currentSky = (currentSky + 1) % skyColors.length;
-}
-
-// ⌨️ Spacebar triggers jump
 function keyPressed() {
-  if (key === ' ' && !isJumping) {
-    isJumping = true;
-    jumpProgress = 0;
+  if (gameState === "playing") {
+    // Player 1
+    if (key === 'W') players[0].jump();
+    if (key === 'D') players[0].x += players[0].speed;
+
+    // Player 2
+    if (keyCode === UP_ARROW) players[1].jump();
+    if (keyCode === RIGHT_ARROW) players[1].x += players[1].speed;
+  } else if (gameState === "won" && (key === 'x' || key === 'X')) {
+    resetGame();
   }
+}
+
+// ======= CLASSES =======
+
+class Player {
+  constructor(x, y, c, name) {
+    this.x = x;
+    this.y = y;
+    this.size = 30;
+    this.color = c;
+    this.name = name;
+    this.ySpeed = 0;
+    this.onGround = false;
+    this.isFalling = false;
+    this.speed = 10;
+    this.fallingInLava = false;
+    this.lavaFallStart = 0;
+  }
+
+  applyGravity() {
+    this.ySpeed += 0.8;
+    this.y += this.ySpeed;
+
+    if (this.y + this.size > height) {
+      this.y = height - this.size;
+      this.ySpeed = 0;
+      this.onGround = true;
+    }
+  }
+
+  jump() {
+    if (this.onGround && !this.fallingInLava) {
+      this.ySpeed = -15;
+      this.onGround = false;
+    }
+  }
+
+  move() {
+    if (this.isFalling) this.y += 10;
+  }
+
+  checkBlockCollision(blocks) {
+    this.onGround = false;
+    for (let b of blocks) {
+      if (
+        this.x + this.size > b.x &&
+        this.x < b.x + b.w &&
+        this.y + this.size > b.y &&
+        this.y + this.size < b.y + 20
+      ) {
+        this.y = b.y - this.size;
+        this.ySpeed = 0;
+        this.onGround = true;
+      }
+    }
+  }
+
+  checkBoost(boosts) {
+    for (let b of boosts) {
+      if (dist(this.x, this.y, b.x, b.y) < 30) {
+        this.speed = 18;
+        setTimeout(() => (this.speed = 10), 1500);
+      }
+    }
+  }
+
+  fallIntoLava() {
+    let elapsed = millis() - this.lavaFallStart;
+    fill(15, 100, 100, 0.7);
+    ellipse(this.x + 15, lavaY - 5, 40, 15);
+    this.y += 2;
+    if (elapsed > 800) this.y = height + 100;
+  }
+
+  show() {
+    fill(this.color);
+    rect(this.x, this.y, this.size, this.size);
+  }
+}
+
+class Block {
+  constructor(x, y, w, h, finish = false) {
+    this.x = x;
+    this.y = y;
+    this.w = w;
+    this.h = h;
+    this.finish = finish;
+  }
+
+  show() {
+    if (this.finish) {
+      fill(200);
+      rect(this.x, this.y, this.w, this.h);
+      fill("red");
+      triangle(this.x + this.w - 20, this.y, this.x + this.w - 5, this.y + 20, this.x + this.w - 20, this.y + 20);
+    } else {
+      fill(220, 70, 100);
+      rect(this.x, this.y, this.w, this.h);
+    }
+  }
+}
+
+class Boost {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+  show() {
+    fill(60, 100, 100);
+    ellipse(this.x, this.y - 10, 20, 10);
+  }
+}
+
+// ======= VISUALS =======
+
+function drawGalaxy() {
+  // Color shifting galaxy
+  colorPhase += 0.5;
+  if (colorPhase > 360) colorPhase = 0;
+  let bgColor = color(colorPhase, 80, 20);
+  background(bgColor);
+
+  // Twinkling drifting stars
+  noStroke();
+  for (let s of stars) {
+    s.x -= s.speed;
+    s.brightness += sin(frameCount * s.flickerSpeed) * 0.5;
+    if (s.x < 0) s.x = width;
+    fill(60, 0, s.brightness);
+    circle(s.x, s.y, s.size);
+  }
+}
+
+function drawLava() {
+  noStroke();
+  for (let i = 0; i < 10; i++) {
+    fill(15, 100, 100, 0.6);
+    rect(0, lavaY + i * 2, width, 10);
+  }
+}
+
+function drawScoreboard() {
+  fill(0, 0, 100);
+  textSize(18);
+  textAlign(LEFT);
+  text("🏁 Galaxy Jump Race", width - 250, 50);
+  textSize(14);
+  fill(120, 100, 100);
+  text("Player 1 (W/D): Green", width - 250, 80);
+  fill(330, 60, 100);
+  text("Player 2 (↑/→): Pink", width - 250, 100);
+  fill(60, 100, 100);
+  text("⚡ Boost Pads = Speed Boost!", width - 250, 130);
+}
+
+function drawTimer() {
+  fill(0, 0, 100);
+  textSize(16);
+  let elapsed = (millis() - startTime) / 1000;
+  text(`⏱ Time: ${elapsed.toFixed(2)}s`, width - 250, 160);
+  if (bestTime) text(`🏆 Best: ${bestTime.toFixed(2)}s`, width - 250, 180);
+}
+
+function drawWinScreen() {
+  drawGalaxy();
+  textAlign(CENTER, CENTER);
+  textSize(40);
+  fill(0, 0, 100);
+  text(`${winner} WON! 🏆`, width / 2, height / 2 - 40);
+  textSize(20);
+  text("Press 'X' to restart", width / 2, height / 2 + 20);
 }
